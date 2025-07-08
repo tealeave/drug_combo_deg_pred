@@ -1,0 +1,279 @@
+# Training Configuration for Drug Combination Prediction
+# Debug-friendly settings for development and testing
+
+# Debug Mode Settings
+debug:
+  enabled: true
+  log_level: "DEBUG"
+  small_dataset: true        # Use smaller dataset for faster iteration
+  quick_epochs: true         # Reduce epochs for debugging
+  save_every_epoch: true     # Save model every epoch for debugging
+  plot_every_epoch: true     # Generate plots every epoch
+  gradient_debugging: true   # Enable gradient monitoring
+  memory_profiling: false    # Enable memory profiling (can be slow)
+
+# Logging Configuration
+logging:
+  log_dir: "logs"
+  log_file: "training.log"
+  tensorboard_dir: "runs"
+  wandb_enabled: false       # Disable by default for debugging
+  print_interval: 10         # Print every N batches
+  save_interval: 5           # Save every N epochs
+  plot_interval: 5           # Plot every N epochs
+
+# Model Checkpointing
+checkpointing:
+  enabled: true
+  save_best: true
+  save_last: true
+  save_every_n_epochs: 5
+  checkpoint_dir: "checkpoints"
+  max_checkpoints: 5         # Keep only last 5 checkpoints
+  monitor_metric: "val_loss"
+  mode: "min"                # min for loss, max for accuracy
+
+# Training Parameters
+training:
+  # Device Configuration
+  device: "auto"             # "auto", "cpu", "cuda", "cuda:0"
+  mixed_precision: false     # Enable for faster training with compatible GPUs
+  compile_model: false       # PyTorch 2.0 model compilation
+  
+  # Random Seeds
+  seed: 42
+  deterministic: true        # For reproducible results
+  
+  # Batch Settings
+  batch_size: 16             # Small batch size for debugging
+  num_workers: 2             # Reduced for debugging
+  pin_memory: true
+  persistent_workers: true
+  
+  # Epochs
+  max_epochs: 50             # Reduced for debugging
+  ae_epochs: 20              # Autoencoder pretraining epochs
+  full_epochs: 30            # Full model training epochs
+  
+  # Optimization
+  optimizer: "adam"
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  gradient_clip_val: 1.0
+  
+  # Learning Rate Scheduling
+  scheduler: "reduce_on_plateau"
+  scheduler_patience: 5
+  scheduler_factor: 0.5
+  scheduler_min_lr: 1e-6
+  
+  # Early Stopping
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.0001
+    monitor: "val_loss"
+    mode: "min"
+    restore_best_weights: true
+  
+  # Validation
+  validation_interval: 1     # Validate every N epochs
+  validation_metric: "mae"
+  
+  # Data Loading
+  dataloader_timeout: 30     # Seconds to wait for data loading
+  prefetch_factor: 2
+
+# Model Architecture Debug Settings
+model:
+  # Use smaller architecture for debugging
+  gene_dim: 1000             # Reduced from 5000 for faster training
+  latent_dim: 10             # Reduced from 20
+  autoencoder_hidden: [200, 50]  # Reduced from [1000, 200]
+  predictor_hidden: [32, 64, 32]  # Reduced from [64, 128, 64]
+  use_attention: true
+  dropout_rate: 0.1
+  
+  # Debug-specific settings
+  initialize_weights: true
+  weight_init_method: "xavier_uniform"
+  bias_init_method: "zeros"
+
+# Data Configuration
+data:
+  # Debug dataset settings
+  max_samples: 1000          # Limit dataset size for debugging
+  use_synthetic: true        # Use synthetic data for debugging
+  synthetic_noise_level: 0.1
+  
+  # Preprocessing
+  normalize_method: "standard"
+  use_differential: true
+  clip_outliers: true
+  outlier_threshold: 3.0     # Standard deviations
+  
+  # Data Splitting
+  train_ratio: 0.7           # Slightly different split for debugging
+  val_ratio: 0.2
+  test_ratio: 0.1
+  stratify: false            # No stratification for regression
+  
+  # Augmentation
+  use_symmetry_augmentation: true
+  augmentation_factor: 1.0   # No extra augmentation for debugging
+  
+  # Filtering
+  min_expression_threshold: 0.1
+  max_variance_threshold: null
+  filter_low_variance: false
+
+# Monitoring and Debugging
+monitoring:
+  # Metrics to track
+  metrics:
+    - "mae"
+    - "mse"
+    - "r2"
+    - "pearson"
+    - "spearman"
+  
+  # Additional debugging metrics
+  debug_metrics:
+    - "gradient_norm"
+    - "weight_norm"
+    - "activation_stats"
+    - "loss_components"
+  
+  # Visualization
+  plot_training_curves: true
+  plot_predictions: true
+  plot_attention_weights: true
+  save_plots: true
+  plot_format: "png"
+  
+  # Profiling
+  profile_memory: false
+  profile_time: false
+  profile_model: false
+
+# Loss Configuration
+loss:
+  # Main loss function
+  prediction_loss: "mae"     # "mse", "mae", "huber"
+  reconstruction_loss: "mse"
+  
+  # Loss weights
+  prediction_weight: 1.0
+  reconstruction_weight: 0.1
+  
+  # Advanced loss settings
+  huber_delta: 1.0          # If using Huber loss
+  focal_alpha: 0.25         # If using focal loss
+  focal_gamma: 2.0
+  
+  # Gradient penalties
+  gradient_penalty: 0.0
+  l2_penalty: 0.0
+
+# Testing Configuration
+testing:
+  # Test settings
+  test_batch_size: 32
+  test_metrics: ["mae", "mse", "r2", "pearson"]
+  save_predictions: true
+  save_attention_weights: true
+  
+  # Evaluation intervals
+  test_interval: 5           # Test every N epochs during training
+  final_test: true           # Always test at the end
+  
+  # Cross-validation
+  cv_enabled: false          # Disable for debugging
+  cv_folds: 5
+  cv_metric: "mae"
+
+# Hardware Configuration
+hardware:
+  # GPU settings
+  gpu_memory_fraction: 0.9
+  allow_growth: true
+  
+  # CPU settings
+  cpu_threads: 4
+  
+  # Memory settings
+  max_memory_usage: "8GB"
+  memory_cleanup_interval: 100  # Batches
+
+# Experiment Tracking
+experiment:
+  name: "debug_experiment"
+  tags: ["debug", "development", "drug-combo"]
+  notes: "Debug configuration for rapid development"
+  
+  # Hyperparameter search (disabled for debugging)
+  hyperparameter_search: false
+  search_space: {}
+  search_trials: 10
+  
+  # Model comparison
+  compare_models: false
+  baseline_models: ["linear_addition", "random_forest"]
+
+# Safety and Recovery
+safety:
+  # Automatic recovery
+  auto_recovery: true
+  recovery_checkpoint: "last"
+  
+  # Error handling
+  continue_on_error: false
+  max_retries: 3
+  retry_delay: 5            # Seconds
+  
+  # Resource limits
+  max_training_time: 3600   # 1 hour max for debugging
+  max_memory_per_process: "4GB"
+  
+  # Graceful shutdown
+  graceful_shutdown: true
+  shutdown_timeout: 30      # Seconds
+
+# Development Utilities
+development:
+  # Code debugging
+  debug_mode: true
+  verbose: true
+  
+  # Fast debugging options
+  skip_validation: false
+  skip_testing: false
+  skip_checkpointing: false
+  
+  # Development data
+  use_dummy_data: false
+  dummy_data_size: 100
+  
+  # Profiling
+  profile_training: false
+  profile_inference: false
+  
+  # Interactive debugging
+  interactive_mode: false
+  breakpoint_epochs: []     # Epochs to pause for debugging
+
+# Production Settings (for when transitioning from debug)
+production:
+  # These settings are used when debug.enabled is False
+  batch_size: 32
+  max_epochs: 200
+  ae_epochs: 100
+  full_epochs: 200
+  gene_dim: 5000
+  latent_dim: 20
+  autoencoder_hidden: [1000, 200]
+  predictor_hidden: [64, 128, 64]
+  learning_rate: 0.0005
+  max_samples: null          # Use full dataset
+  validation_interval: 1
+  early_stopping_patience: 20
