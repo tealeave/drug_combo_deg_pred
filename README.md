@@ -49,21 +49,25 @@ python scripts/predict.py --model best_full_model.pth --data data/ --pairs drug_
 
 ### Model Components
 
-1. **Gene Expression Autoencoder**
+**⚠️ Note**: All model components are implemented in `src/drug_combo/models/prediction_model.py` as a unified architecture.
+
+1. **Gene Expression Autoencoder** (`GeneExpressionAutoencoder`)
    - Compresses 5,000-dimensional gene profiles to latent representations
    - Architecture: 5000 → 1000 → 200 → 20 → 200 → 1000 → 5000
    - Uses batch normalization and dropout for regularization
+   - Includes separate encoder and decoder methods
 
-2. **Drug Combination Predictor**
+2. **Drug Combination Predictor** (`DrugCombinationPredictor`)
    - Takes two drug latent representations as input
    - Uses **additive fusion** for order invariance: `h_combo = h_A + h_B`
    - Predicts combination latent representation
-   - Optional residual connections for additive baselines
+   - Optional self-attention and residual connections
 
-3. **Full Pipeline**
+3. **Full Pipeline** (`FullDrugCombinationModel`)
    - Encode single drugs → Predict combination → Decode to gene expression
    - End-to-end differentiable training
    - Maintains autoencoder quality during combination training
+   - Integrated self-attention mechanisms for gene interactions
 
 ### Order Invariance Strategy
 
@@ -97,8 +101,11 @@ data/
 
 ## 🔧 Configuration
 
-### Model Configuration (`configs/model_config.yaml`)
+### Configuration Files
 
+The project uses two configuration files:
+
+#### Production Configuration (`configs/model_config.yaml`)
 ```yaml
 model:
   gene_dim: 5000              # Number of genes
@@ -113,15 +120,30 @@ training:
   batch_size: 32             # Training batch size
   ae_lr: 0.001               # Autoencoder learning rate
   full_lr: 0.0005            # Full model learning rate
+  seed: 42                   # Random seed
+  weight_decay: 0.0001       # L2 regularization
 ```
 
-### Debug Configuration (`configs/training_config.yaml`)
+#### Debug Configuration (`configs/training_config.yaml`)
+```yaml
+debug:
+  enabled: true               # Enable debug mode
+  small_dataset: true        # Use smaller dataset for testing
+  quick_epochs: true         # Reduce epochs for debugging
 
-Includes settings for rapid development:
-- Reduced model sizes and epochs
-- Synthetic data generation
-- Enhanced logging and monitoring
-- Memory and performance profiling
+model:
+  gene_dim: 1000             # Reduced from 5000 for faster training
+  latent_dim: 10             # Reduced from 20
+  autoencoder_hidden: [200, 50]  # Reduced architecture
+  use_attention: true        # Enable attention for testing
+
+training:
+  ae_epochs: 20              # Reduced epochs
+  full_epochs: 30            # Reduced epochs
+  batch_size: 16             # Smaller batch size
+```
+
+**⚠️ Important**: When `debug.enabled: true`, the debug settings override production settings. Set `debug.enabled: false` for production training.
 
 ## 📈 Training
 
@@ -257,9 +279,9 @@ flake8 src/ tests/ scripts/
 ```
 drug_combo_deg_pred/
 ├── configs/                 # Configuration files
-│   ├── model_config.yaml   # Model architecture and training
-│   └── training_config.yaml # Debug and development settings
-├── data/                   # Data directory
+│   ├── model_config.yaml   # Production model configuration
+│   └── training_config.yaml # Debug/development configuration
+├── data/                   # Data directory (⚠️ currently empty)
 │   ├── raw/               # Raw input data
 │   ├── processed/         # Preprocessed data
 │   └── external/          # External datasets
@@ -268,13 +290,21 @@ drug_combo_deg_pred/
 │   ├── evaluate.py       # Model evaluation
 │   └── predict.py        # Prediction generation
 ├── src/drug_combo/        # Core package
-│   ├── data/             # Data loading and preprocessing
-│   ├── models/           # Neural network architectures
-│   ├── training/         # Training and evaluation logic
-│   └── utils/            # Utilities and metrics
-├── tests/                # Test suite
-├── notebooks/            # Jupyter notebooks (optional)
-└── pyproject.toml        # Project configuration
+│   ├── data/             # Data loading and preprocessing ✅
+│   ├── models/           # Neural network architectures ✅
+│   │   ├── prediction_model.py  # Main model implementation ✅
+│   │   ├── autoencoder.py       # Standalone autoencoder classes ✅
+│   │   └── attention_layers.py  # Attention mechanisms ✅
+│   ├── training/         # Training and evaluation logic ✅
+│   │   ├── trainer.py    # Main training class ✅
+│   │   └── evaluation.py # Comprehensive evaluation module ✅
+│   └── utils/            # Utilities and metrics ✅
+├── tests/                # Test suite ✅
+├── eda/                  # Exploratory data analysis scripts ✅
+│   ├── 01_exploratory_data_analysis.py  # Data exploration and visualization ✅
+│   ├── 02_baseline_models.py           # Baseline model implementations ✅
+│   └── 03_model_experiments.py         # Neural network experiments ✅
+└── pyproject.toml        # Project configuration ✅
 ```
 
 ## 📊 Performance
@@ -286,47 +316,8 @@ drug_combo_deg_pred/
 - **Training Time**: ~2-4 hours on single GPU
 - **Inference**: ~1000 predictions/second
 
-### Benchmarks
+### Expected Benchmarks
 - **Baseline Improvement**: 15-25% MAE reduction vs. additive baseline
 - **Correlation**: R > 0.7 for majority of genes
 - **Symmetry**: Perfect order invariance (f(A,B) = f(B,A))
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes with tests
-4. Run the test suite (`pytest tests/`)
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Development Guidelines
-- Follow PEP 8 style guidelines
-- Add comprehensive tests for new features
-- Update documentation for API changes
-- Use type hints throughout the codebase
-
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔗 References
-
-- **Drug Combination Prediction**: Systematic approaches to polypharmacology
-- **Gene Expression Analysis**: Differential expression and pathway analysis
-- **Neural Architecture**: Autoencoder-based representation learning
-- **Symmetry in ML**: Order-invariant neural network design
-
-## 🆘 Support
-
-For questions, issues, or contributions:
-
-1. **Issues**: Report bugs or request features via GitHub Issues
-2. **Discussions**: Ask questions in GitHub Discussions
-3. **Documentation**: Check this README and inline code documentation
-4. **Tests**: Run `pytest tests/` to verify your environment
-
----
-
-**Built with ❤️ for advancing computational drug discovery**

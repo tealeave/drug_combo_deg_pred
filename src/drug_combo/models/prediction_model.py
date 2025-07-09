@@ -6,104 +6,10 @@ Based on the interview discussion about symmetry-aware neural networks.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 
-
-class GeneExpressionAutoencoder(nn.Module):
-    """Autoencoder for dimensionality reduction of gene expression profiles."""
-    
-    def __init__(
-        self, 
-        input_dim: int = 5000, 
-        latent_dim: int = 20,
-        hidden_dims: list = [1000, 200]
-    ):
-        super().__init__()
-        self.input_dim = input_dim
-        self.latent_dim = latent_dim
-        
-        # Encoder
-        encoder_layers = []
-        prev_dim = input_dim
-        
-        for hidden_dim in hidden_dims:
-            encoder_layers.extend([
-                nn.Linear(prev_dim, hidden_dim),
-                nn.BatchNorm1d(hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.1)
-            ])
-            prev_dim = hidden_dim
-            
-        encoder_layers.append(nn.Linear(prev_dim, latent_dim))
-        self.encoder = nn.Sequential(*encoder_layers)
-        
-        # Decoder
-        decoder_layers = []
-        prev_dim = latent_dim
-        
-        for hidden_dim in reversed(hidden_dims):
-            decoder_layers.extend([
-                nn.Linear(prev_dim, hidden_dim),
-                nn.BatchNorm1d(hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.1)
-            ])
-            prev_dim = hidden_dim
-            
-        decoder_layers.append(nn.Linear(prev_dim, input_dim))
-        self.decoder = nn.Sequential(*decoder_layers)
-        
-    def encode(self, x: torch.Tensor) -> torch.Tensor:
-        return self.encoder(x)
-    
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        return self.decoder(z)
-    
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        latent = self.encode(x)
-        reconstructed = self.decode(latent)
-        return reconstructed, latent
-
-
-class SelfAttention(nn.Module):
-    """Self-attention mechanism for gene expression features."""
-    
-    def __init__(self, dim: int, num_heads: int = 8):
-        super().__init__()
-        self.num_heads = num_heads
-        self.dim = dim
-        self.head_dim = dim // num_heads
-        
-        assert dim % num_heads == 0, "dim must be divisible by num_heads"
-        
-        self.query = nn.Linear(dim, dim)
-        self.key = nn.Linear(dim, dim)
-        self.value = nn.Linear(dim, dim)
-        self.out = nn.Linear(dim, dim)
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size, seq_len, dim = x.shape
-        
-        # Generate Q, K, V
-        q = self.query(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        k = self.key(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        v = self.value(x).view(batch_size, seq_len, self.num_heads, self.head_dim)
-        
-        # Transpose for attention computation
-        q = q.transpose(1, 2)  # (batch, heads, seq_len, head_dim)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-        
-        # Scaled dot-product attention
-        scores = torch.matmul(q, k.transpose(-2, -1)) / (self.head_dim ** 0.5)
-        attention = F.softmax(scores, dim=-1)
-        
-        # Apply attention to values
-        out = torch.matmul(attention, v)
-        out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, dim)
-        
-        return self.out(out)
+from .autoencoder import GeneExpressionAutoencoder
+from .attention_layers import SelfAttention, CrossAttention, create_attention_layer
 
 
 class DrugCombinationPredictor(nn.Module):
@@ -116,22 +22,22 @@ class DrugCombinationPredictor(nn.Module):
     def __init__(
         self,
         latent_dim: int = 20,
-        hidden_dims: list = [64, 128, 64],
+        hidden_dims: List[int] = [64, 128, 64],
         output_dim: int = 20,  # Will match latent_dim for autoencoder
         use_attention: bool = True,
-        dropout_rate: float = 0.1
+        dropout_rate: float = 0.1,
+        fusion_method: str = "add"
     ):
         super().__init__()
         self.latent_dim = latent_dim
         self.output_dim = output_dim
         self.use_attention = use_attention
+        self.fusion_method = fusion_method
         
         # Input processing layers
         self.input_norm = nn.LayerNorm(latent_dim)
         
-        # Symmetric fusion approaches
-        self.fusion_method = "add"  # "concat", "add", "attention"
-        
+        # Determine input size based on fusion method
         if self.fusion_method == "concat":
             input_size = latent_dim * 2
         elif self.fusion_method == "add":
@@ -198,14 +104,14 @@ class DrugCombinationPredictor(nn.Module):
         drug_b: torch.Tensor
     ) -> torch.Tensor:
         """
-        Forward pass for drug combination prediction.
+        Forward pass through the drug combination predictor.
         
         Args:
-            drug_a: Latent representation of drug A (batch_size, latent_dim)
-            drug_b: Latent representation of drug B (batch_size, latent_dim)
+            drug_a: Latent representation of drug A
+            drug_b: Latent representation of drug B
             
         Returns:
-            Predicted combination effect (batch_size, output_dim)
+            Predicted combination latent representation
         """
         # Normalize inputs
         drug_a = self.input_norm(drug_a)
@@ -213,93 +119,232 @@ class DrugCombinationPredictor(nn.Module):
         
         # Apply self-attention if enabled
         if self.use_attention:
-            # Reshape for attention (treat features as sequence)
-            drug_a_attn = drug_a.unsqueeze(1)  # (batch, 1, latent_dim)
-            drug_b_attn = drug_b.unsqueeze(1)
+            # Add sequence dimension for attention
+            drug_a_seq = drug_a.unsqueeze(1)
+            drug_b_seq = drug_b.unsqueeze(1)
             
-            drug_a = self.self_attention(drug_a_attn).squeeze(1)
-            drug_b = self.self_attention(drug_b_attn).squeeze(1)
+            # Apply self-attention
+            drug_a_attended = self.self_attention(drug_a_seq).squeeze(1)
+            drug_b_attended = self.self_attention(drug_b_seq).squeeze(1)
+        else:
+            drug_a_attended = drug_a
+            drug_b_attended = drug_b
         
         # Symmetric fusion
-        fused = self.symmetric_fusion(drug_a, drug_b)
+        fused = self.symmetric_fusion(drug_a_attended, drug_b_attended)
         
-        # Main prediction
+        # Predict combination
         prediction = self.predictor(fused)
         
-        # Add residual connection for additive baseline
+        # Apply residual connection if enabled
         if self.use_residual:
-            additive_baseline = drug_a + drug_b
+            # Calculate additive baseline
+            additive_baseline = drug_a_attended + drug_b_attended
+            
+            # Gate mechanism
             gate = torch.sigmoid(self.residual_gate(additive_baseline))
+            
+            # Combine prediction with additive baseline
             prediction = gate * prediction + (1 - gate) * additive_baseline
         
         return prediction
 
 
 class FullDrugCombinationModel(nn.Module):
-    """Complete model combining autoencoder and combination predictor."""
+    """
+    Complete drug combination prediction model.
+    
+    Combines autoencoder for dimensionality reduction with combination predictor
+    for end-to-end training and prediction.
+    """
     
     def __init__(
         self,
         gene_dim: int = 5000,
         latent_dim: int = 20,
-        autoencoder_hidden: list = [1000, 200],
-        predictor_hidden: list = [64, 128, 64],
-        use_attention: bool = True
+        autoencoder_hidden: List[int] = [1000, 200],
+        predictor_hidden: List[int] = [64, 128, 64],
+        use_attention: bool = True,
+        dropout_rate: float = 0.1,
+        fusion_method: str = "add"
     ):
         super().__init__()
+        self.gene_dim = gene_dim
+        self.latent_dim = latent_dim
         
+        # Autoencoder for dimensionality reduction
         self.autoencoder = GeneExpressionAutoencoder(
             input_dim=gene_dim,
             latent_dim=latent_dim,
-            hidden_dims=autoencoder_hidden
+            hidden_dims=autoencoder_hidden,
+            dropout_rate=dropout_rate
         )
         
+        # Drug combination predictor
         self.predictor = DrugCombinationPredictor(
             latent_dim=latent_dim,
             hidden_dims=predictor_hidden,
             output_dim=latent_dim,
-            use_attention=use_attention
+            use_attention=use_attention,
+            dropout_rate=dropout_rate,
+            fusion_method=fusion_method
         )
         
     def forward(
         self, 
-        drug_a_expr: torch.Tensor, 
-        drug_b_expr: torch.Tensor,
-        return_latent: bool = False
+        drug_a: torch.Tensor, 
+        drug_b: torch.Tensor
     ) -> torch.Tensor:
         """
-        Complete forward pass from gene expressions to combination prediction.
+        Forward pass through the complete model.
         
         Args:
-            drug_a_expr: Gene expression for drug A (batch_size, gene_dim)
-            drug_b_expr: Gene expression for drug B (batch_size, gene_dim)
-            return_latent: Whether to return latent representations
+            drug_a: Gene expression profile of drug A
+            drug_b: Gene expression profile of drug B
             
         Returns:
-            Predicted combination gene expression (batch_size, gene_dim)
+            Predicted combination gene expression profile
         """
         # Encode to latent space
-        drug_a_latent = self.autoencoder.encode(drug_a_expr)
-        drug_b_latent = self.autoencoder.encode(drug_b_expr)
+        _, latent_a = self.autoencoder(drug_a)
+        _, latent_b = self.autoencoder(drug_b)
         
         # Predict combination in latent space
-        combo_latent = self.predictor(drug_a_latent, drug_b_latent)
+        combination_latent = self.predictor(latent_a, latent_b)
         
         # Decode back to gene expression space
-        combo_expr = self.autoencoder.decode(combo_latent)
+        combination_expression = self.autoencoder.decode(combination_latent)
         
-        if return_latent:
-            return combo_expr, (drug_a_latent, drug_b_latent, combo_latent)
+        return combination_expression
+    
+    def encode_drugs(
+        self, 
+        drug_a: torch.Tensor, 
+        drug_b: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Encode drugs to latent representations.
         
-        return combo_expr
+        Args:
+            drug_a: Gene expression profile of drug A
+            drug_b: Gene expression profile of drug B
+            
+        Returns:
+            Tuple of latent representations (latent_a, latent_b)
+        """
+        _, latent_a = self.autoencoder(drug_a)
+        _, latent_b = self.autoencoder(drug_b)
+        return latent_a, latent_b
+    
+    def predict_combination_latent(
+        self, 
+        latent_a: torch.Tensor, 
+        latent_b: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Predict combination in latent space.
+        
+        Args:
+            latent_a: Latent representation of drug A
+            latent_b: Latent representation of drug B
+            
+        Returns:
+            Predicted combination latent representation
+        """
+        return self.predictor(latent_a, latent_b)
+    
+    def get_attention_weights(
+        self, 
+        drug_a: torch.Tensor, 
+        drug_b: torch.Tensor
+    ) -> Optional[torch.Tensor]:
+        """
+        Get attention weights for interpretability.
+        
+        Args:
+            drug_a: Gene expression profile of drug A
+            drug_b: Gene expression profile of drug B
+            
+        Returns:
+            Attention weights if attention is enabled, None otherwise
+        """
+        if not self.predictor.use_attention:
+            return None
+        
+        # Encode to latent space
+        _, latent_a = self.autoencoder(drug_a)
+        _, latent_b = self.autoencoder(drug_b)
+        
+        # Get attention weights from predictor
+        # This would need to be implemented in the attention layers
+        # to return attention weights along with the output
+        return None  # Placeholder
+    
+    def freeze_autoencoder(self):
+        """Freeze autoencoder parameters for fine-tuning."""
+        for param in self.autoencoder.parameters():
+            param.requires_grad = False
+    
+    def unfreeze_autoencoder(self):
+        """Unfreeze autoencoder parameters."""
+        for param in self.autoencoder.parameters():
+            param.requires_grad = True
 
 
-def create_model(config: dict) -> FullDrugCombinationModel:
-    """Factory function to create model from configuration."""
-    return FullDrugCombinationModel(
-        gene_dim=config.get('gene_dim', 5000),
-        latent_dim=config.get('latent_dim', 20),
-        autoencoder_hidden=config.get('autoencoder_hidden', [1000, 200]),
-        predictor_hidden=config.get('predictor_hidden', [64, 128, 64]),
-        use_attention=config.get('use_attention', True)
-    )
+def create_model(
+    model_type: str = "full",
+    gene_dim: int = 5000,
+    latent_dim: int = 20,
+    autoencoder_hidden: List[int] = [1000, 200],
+    predictor_hidden: List[int] = [64, 128, 64],
+    use_attention: bool = True,
+    dropout_rate: float = 0.1,
+    fusion_method: str = "add",
+    **kwargs
+) -> nn.Module:
+    """
+    Factory function to create drug combination prediction models.
+    
+    Args:
+        model_type: Type of model ('full', 'autoencoder', 'predictor')
+        gene_dim: Number of genes in expression profile
+        latent_dim: Size of latent representation
+        autoencoder_hidden: Hidden dimensions for autoencoder
+        predictor_hidden: Hidden dimensions for predictor
+        use_attention: Whether to use attention mechanisms
+        dropout_rate: Dropout rate
+        fusion_method: Method for fusing drug representations
+        **kwargs: Additional arguments
+        
+    Returns:
+        Model instance
+    """
+    if model_type == "full":
+        return FullDrugCombinationModel(
+            gene_dim=gene_dim,
+            latent_dim=latent_dim,
+            autoencoder_hidden=autoencoder_hidden,
+            predictor_hidden=predictor_hidden,
+            use_attention=use_attention,
+            dropout_rate=dropout_rate,
+            fusion_method=fusion_method
+        )
+    elif model_type == "autoencoder":
+        return GeneExpressionAutoencoder(
+            input_dim=gene_dim,
+            latent_dim=latent_dim,
+            hidden_dims=autoencoder_hidden,
+            dropout_rate=dropout_rate,
+            **kwargs
+        )
+    elif model_type == "predictor":
+        return DrugCombinationPredictor(
+            latent_dim=latent_dim,
+            hidden_dims=predictor_hidden,
+            output_dim=latent_dim,
+            use_attention=use_attention,
+            dropout_rate=dropout_rate,
+            fusion_method=fusion_method
+        )
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
