@@ -8,21 +8,14 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
-import pandas as pd
-from typing import Dict, Tuple, Optional
-import yaml
-import argparse
-from pathlib import Path
+from typing import Dict, Tuple
 import wandb
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from src.drug_combo.models.prediction_model import (
-    FullDrugCombinationModel, 
-    GeneExpressionAutoencoder
-)
+from src.drug_combo.models.prediction_model import FullDrugCombinationModel
 from src.drug_combo.data.preprocessing import preprocess_data
-from src.drug_combo.utils.metrics import calculate_metrics
+from .evaluation import ModelEvaluator
 
 
 class DrugCombinationTrainer:
@@ -76,7 +69,7 @@ class DrugCombinationTrainer:
         """Prepare data loaders for training."""
         print("Loading and preprocessing data...")
         
-        # Load data (implement based on your data format)
+        # Load data (implement based on the data format)
         single_drug_data, pair_data = preprocess_data(data_path, self.config)
         
         # Create datasets with symmetry augmentation
@@ -330,26 +323,8 @@ class DrugCombinationTrainer:
     
     def comprehensive_evaluation(self, test_loader: DataLoader) -> Dict:
         """Comprehensive evaluation with multiple metrics."""
-        self.model.eval()
-        predictions = []
-        targets = []
-        
-        with torch.no_grad():
-            for drug_a, drug_b, target in test_loader:
-                drug_a = drug_a.to(self.device)
-                drug_b = drug_b.to(self.device)
-                
-                prediction = self.model(drug_a, drug_b)
-                predictions.append(prediction.cpu().numpy())
-                targets.append(target.numpy())
-        
-        predictions = np.concatenate(predictions, axis=0)
-        targets = np.concatenate(targets, axis=0)
-        
-        # Calculate comprehensive metrics
-        metrics = calculate_metrics(predictions, targets)
-        
-        return metrics
+        evaluator = ModelEvaluator(self.model, str(self.device))
+        return evaluator.evaluate_basic_metrics(test_loader, "test")
     
     def plot_training_history(self, save_path: str = "training_history.png"):
         """Plot training history."""
@@ -378,93 +353,3 @@ class DrugCombinationTrainer:
         plt.tight_layout()
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.show()
-
-
-def load_config(config_path: str) -> dict:
-    """Load configuration from YAML file."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return config
-
-
-def main():
-    parser = argparse.ArgumentParser(description='Train drug combination prediction model')
-    parser.add_argument('--config', type=str, default='configs/model_config.yaml',
-                        help='Path to configuration file')
-    parser.add_argument('--data', type=str, required=True,
-                        help='Path to data directory')
-    parser.add_argument('--wandb', action='store_true',
-                        help='Use Weights & Biases for logging')
-    parser.add_argument('--project', type=str, default='drug-combo-prediction',
-                        help='Wandb project name')
-    
-    args = parser.parse_args()
-    
-    # Load configuration
-    config = load_config(args.config)
-    
-    # Initialize wandb if requested
-    if args.wandb:
-        wandb.init(
-            project=args.project,
-            config=config,
-            name=f"exp_{config['model']['latent_dim']}d_{'attn' if config['model']['use_attention'] else 'no_attn'}"
-        )
-    
-    # Set random seeds for reproducibility
-    torch.manual_seed(config['training']['seed'])
-    np.random.seed(config['training']['seed'])
-    
-    # Initialize trainer
-    trainer = DrugCombinationTrainer(config)
-    
-    print(f"Using device: {trainer.device}")
-    print(f"Model parameters: {sum(p.numel() for p in trainer.model.parameters()):,}")
-    
-    # Prepare data
-    train_loader, val_loader, test_loader = trainer.prepare_data(args.data)
-    
-    # Load single drug data for autoencoder pretraining
-    # This should be implemented in your preprocessing module
-    single_drug_data = np.random.randn(1001, 5000)  # Placeholder
-    
-    # Stage 1: Train autoencoder
-    trainer.train_autoencoder(
-        single_drug_data, 
-        epochs=config['training']['ae_epochs']
-    )
-    
-    # Stage 2: Train full model
-    trainer.train_full_model(
-        train_loader, 
-        val_loader, 
-        epochs=config['training']['full_epochs']
-    )
-    
-    # Final evaluation
-    print("Evaluating on test set...")
-    test_metrics = trainer.comprehensive_evaluation(test_loader)
-    
-    print("Test Results:")
-    for metric, value in test_metrics.items():
-        print(f"{metric}: {value:.6f}")
-    
-    if args.wandb:
-        wandb.log(test_metrics)
-    
-    # Plot training history
-    trainer.plot_training_history()
-    
-    # Save final model
-    torch.save({
-        'model_state_dict': trainer.model.state_dict(),
-        'config': config,
-        'test_metrics': test_metrics,
-        'training_history': trainer.history
-    }, 'final_model.pth')
-    
-    print("Training completed!")
-
-
-if __name__ == "__main__":
-    main()
