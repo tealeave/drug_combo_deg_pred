@@ -1,0 +1,47 @@
+[project]
+name = "drug-discovery"
+version = "0.1.0"
+description = "Drug Discovery live-coding project for ML/AI engineer interviews"
+authors = [
+    {name = "Mitch Morgan", email = "mitch@conquestlabs.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "rdkit>=2025.3.3",
+    "colorama>=0.4.6",
+    "pandas>=2.3.0",
+    "numpy>=2.3.1",
+    # Dev
+    "mypy>=1.13.0",
+    "pytest>=8.3.4",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.4",
+    "types-colorama>=0.4.15.20240311",
+]
+
+[project.scripts]
+main = "drug_discovery.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.mypy]
+python_version = "3.13"
+files = ["drug_discovery", "tests"]
+ignore_missing_imports = false
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+strict = true
+
+[[tool.mypy.overrides]]
+module = ["rdkit.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+lint.select = ["E", "F", "B", "I"]
+line-length = 88
+
+[tool.pytest.ini_options]
+addopts = "--cov=drug_discovery --cov-report=html tests/"
