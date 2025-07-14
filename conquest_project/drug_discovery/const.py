@@ -1,0 +1,19 @@
+import os
+from typing import Final
+
+DEFAULT_THRESHOLD: Final = 0.5
+CARBON_ATOM_LIMIT: Final = 6
+
+# Input Data
+DATA_DIR: Final = "data"
+FILENAME_COMPOUND_SCORES: Final = "compound_scores.csv"
+FILEPATH_COMPOUND_SCORES: Final = os.path.join(DATA_DIR, FILENAME_COMPOUND_SCORES)
+FILENAME_COMPOUND_NAMES: Final = "compound_names.csv"
+FILEPATH_COMPOUND_NAMES: Final = os.path.join(DATA_DIR, FILENAME_COMPOUND_NAMES)
+
+# Output Data
+OUTPUT_DIR: Final = "output"
+FILENAME_USABLE_COMPOUNDS = "usable_compounds.csv"
+FILEPATH_USABLE_COMPOUNDS = os.path.join(OUTPUT_DIR, FILENAME_USABLE_COMPOUNDS)
+FILENAME_ERRORS_LOG = "errors.log"
+FILEPATH_ERRORS_LOG = os.path.join(OUTPUT_DIR, FILENAME_ERRORS_LOG)
